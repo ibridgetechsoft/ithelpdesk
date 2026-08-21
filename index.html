@@ -316,6 +316,11 @@ tr.row-click:hover td{ background:var(--surface-alt); }
 .password-match{ font-size:11.3px; margin-top:5px; }
 .password-match.ok{ color:var(--st-res); }
 .password-match.bad{ color:var(--critical); }
+
+.email-domain-wrap{ display:flex; align-items:stretch; border:1px solid var(--border); border-radius:8px; overflow:hidden; background:var(--surface); }
+.email-domain-wrap input{ border:none; border-radius:0; flex:1; min-width:0; }
+.email-domain-wrap input:focus{ outline:none; box-shadow:none; }
+.email-domain-suffix{ display:flex; align-items:center; padding:0 10px; background:var(--surface-alt); color:var(--ink-soft); font-size:12.5px; white-space:nowrap; border-left:1px solid var(--border); }
 </style>
 </head>
 <body>
@@ -551,6 +556,23 @@ function pwFieldHtml(id, label, placeholder, autocomplete){
   '</div>' + (id==='su-confirm' ? '<div class="password-match" id="password-match-msg"></div>' : '') + '</div>';
 }
 
+const COMPANY_EMAIL_DOMAIN = '@ibridgetechsoft.com';
+/* Company-domain email field: person only types their username, the
+   domain is fixed alongside it. getEmailFieldValue() reassembles the
+   full address for login/signup. */
+function emailFieldHtml(id, label){
+  return '<div class="field"><label>'+label+'</label><div class="email-domain-wrap">' +
+    '<input type="text" id="'+id+'" placeholder="username" autocomplete="email">' +
+    '<span class="email-domain-suffix">'+COMPANY_EMAIL_DOMAIN+'</span>' +
+  '</div></div>';
+}
+function getEmailFieldValue(id){
+  let v = (document.getElementById(id).value || '').trim().toLowerCase();
+  if (!v) return '';
+  if (v.includes('@')) return v; // they typed the full address anyway — respect it
+  return v + COMPANY_EMAIL_DOMAIN;
+}
+
 function togglePasswordVisibility(id){
   const input = document.getElementById(id);
   const btn = document.getElementById(id+'-toggle');
@@ -571,7 +593,7 @@ function checkPasswordMatch(){
 function switchAuthView(view){ state.authView = view; state.authError = ''; render(); }
 
 async function attemptLogin(){
-  const email = document.getElementById('login-email').value.trim().toLowerCase();
+  const email = getEmailFieldValue('login-email');
   const password = document.getElementById('login-password').value;
   if (!email || !password){ state.authError = 'Enter your email and password.'; render(); return; }
   state.authError = 'Signing in…'; render();
@@ -592,7 +614,7 @@ async function attemptLogin(){
 
 async function doSignup(){
   const name = document.getElementById('su-name').value.trim();
-  const email = document.getElementById('su-email').value.trim().toLowerCase();
+  const email = getEmailFieldValue('su-email');
   const dept = document.getElementById('su-dept').value.trim();
   const pw = document.getElementById('su-password').value;
   const pw2 = document.getElementById('su-confirm').value;
@@ -620,7 +642,7 @@ async function doSignup(){
 }
 
 async function doForgotPassword(){
-  const email = document.getElementById('fp-email').value.trim().toLowerCase();
+  const email = getEmailFieldValue('fp-email');
   if (!email){ state.authError = 'Enter the email on your account.'; render(); return; }
   state.authError = 'Sending…'; render();
   // Uses Supabase Auth's built-in reset-by-email flow — no admin needs to
@@ -1265,7 +1287,7 @@ function authShellHtml(){
 function loginHtml(){
   return '<div class="auth-tabs"><button class="auth-tab active">Log in</button><button class="auth-tab" onclick="switchAuthView(\'signup\')">Sign up</button></div>' +
     (state.authError ? '<div class="auth-error">'+esc(state.authError)+'</div>' : '') +
-    '<div class="field"><label>Email</label><input type="text" id="login-email" placeholder="name@company.com" autocomplete="email"></div>' +
+    emailFieldHtml('login-email','Email') +
     pwFieldHtml('login-password','Password','Enter your password','current-password') +
     '<button class="btn btn-primary btn-block" onclick="attemptLogin()">Log in</button>' +
     '<div class="auth-foot"><button class="auth-link" onclick="switchAuthView(\'forgot\')">Forgot your password?</button></div>';
@@ -1275,7 +1297,7 @@ function signupHtml(){
   return '<div class="auth-tabs"><button class="auth-tab" onclick="switchAuthView(\'login\')">Log in</button><button class="auth-tab active">Sign up</button></div>' +
     (state.authError ? '<div class="auth-error">'+esc(state.authError)+'</div>' : '') +
     '<div class="field"><label>Full name</label><input type="text" id="su-name" placeholder="Your name"></div>' +
-    '<div class="field"><label>Work email</label><input type="text" id="su-email" placeholder="name@company.com"></div>' +
+    emailFieldHtml('su-email','Work email') +
     '<div class="field"><label>Department</label><input type="text" id="su-dept" placeholder="e.g. Marketing"></div>' +
     pwFieldHtml('su-password','Password','At least 6 characters','new-password') +
     pwFieldHtml('su-confirm','Confirm password','Re-enter password','new-password') +
@@ -1291,7 +1313,7 @@ function signupDoneHtml(){
 function forgotHtml(){
   return (state.authError ? '<div class="auth-error">'+esc(state.authError)+'</div>' : '') +
     '<div class="page-desc" style="margin-bottom:16px">Enter your account email. An admin will review the request and issue a temporary password.</div>' +
-    '<div class="field"><label>Email</label><input type="text" id="fp-email" placeholder="name@company.com"></div>' +
+    emailFieldHtml('fp-email','Email') +
     '<button class="btn btn-primary btn-block" onclick="doForgotPassword()">Request password reset</button>' +
     '<div class="auth-foot"><button class="auth-link" onclick="switchAuthView(\'login\')">Back to log in</button></div>';
 }
