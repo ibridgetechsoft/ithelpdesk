@@ -499,6 +499,7 @@ const state = {
   toast: null,
   assetFilter: { category:'all', status:'all', q:'', location:'all' },
   assetFormOpen: false,
+  selectedAssetIds: [],
   assetEditingId: null,
   assetImportMsg: null,
   currentUserId: null,
@@ -762,6 +763,15 @@ function confirmModal(){
     if (dup){ showErr('Another account already uses that email.'); return; }
     doEditUser(m.targetId, name, email, dept);
     return;
+  } else if (m.kind === 'move-assets'){
+    const employeeId = document.getElementById('modal-employee-select').value;
+    if (!employeeId){
+      const err = document.getElementById('modal-error');
+      if (err){ err.style.display = 'block'; err.innerText = 'Choose an employee first.'; }
+      return;
+    }
+    doMoveAssetsToEmployee(employeeId);
+    return;
   } else if (m.kind === 'info'){
     closeModal();
     return;
@@ -784,6 +794,13 @@ function modalHtml(){
     body = '<div class="field"><label>Name</label><input type="text" id="modal-name" value="'+esc(m.presetName||'')+'"></div>' +
       '<div class="field"><label>Email</label><input type="text" id="modal-email" value="'+esc(m.presetEmail||'')+'"></div>' +
       '<div class="field" style="margin-bottom:4px"><label>Department</label><input type="text" id="modal-dept" value="'+esc(m.presetDept||'')+'"></div>' +
+      '<div id="modal-error" class="hint" style="display:none;color:var(--critical);margin-bottom:8px"></div>';
+  }
+  if (m.kind === 'move-assets'){
+    body = '<div class="field" style="margin-bottom:4px"><label>Employee</label><select id="modal-employee-select">' +
+        '<option value="">Choose an employee…</option>' +
+        (m.employeeOptions||[]).map(u => '<option value="'+u.id+'">'+esc(u.name)+' — '+esc(u.email)+'</option>').join('') +
+      '</select></div>' +
       '<div id="modal-error" class="hint" style="display:none;color:var(--critical);margin-bottom:8px"></div>';
   }
   const singleButton = m.kind === 'info';
@@ -2046,14 +2063,40 @@ function assetsHtml(){
     '<button class="btn btn-primary" style="margin-left:auto" onclick="openAssetForm()" '+(isManager && !persona.assetLocations.length ? 'disabled':'')+'>+ Add asset</button>' +
   '</div>';
 
+  const selectedCount = state.selectedAssetIds.filter(id => list.some(a=>a.id===id)).length;
+  if (selectedCount > 0 && !isManager){
+    html += '<div class="card" style="margin-bottom:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">' +
+      '<span>'+selectedCount+' asset'+(selectedCount>1?'s':'')+' selected</span>' +
+      '<button class="btn btn-sm btn-primary" onclick="openMoveAssetsModal()">Move to employee</button>' +
+      '<button class="btn btn-sm" onclick="state.selectedAssetIds=[];render();">Clear selection</button>' +
+    '</div>';
+  }
   html += '<div class="card" style="padding:0">' + (list.length ? assetTableHtml(list) : '<div class="empty">No assets match these filters.</div>') + '</div>';
   return html;
 }
 
+function toggleAssetSelect(id){
+  const i = state.selectedAssetIds.indexOf(id);
+  if (i === -1) state.selectedAssetIds.push(id); else state.selectedAssetIds.splice(i, 1);
+  render();
+}
+function toggleAllAssetSelect(idsOnScreen, checked){
+  if (checked){
+    idsOnScreen.forEach(id => { if (!state.selectedAssetIds.includes(id)) state.selectedAssetIds.push(id); });
+  } else {
+    state.selectedAssetIds = state.selectedAssetIds.filter(id => !idsOnScreen.includes(id));
+  }
+  render();
+}
+
 function assetTableHtml(list){
-  return '<table class="resizable-table" data-resize-key="assets"><thead><tr><th>Asset ID</th><th>Name</th><th>User principal</th><th>Serial no</th><th>Status</th><th>Location</th><th></th></tr></thead><tbody>' +
+  const allSelected = list.length > 0 && list.every(a => state.selectedAssetIds.includes(a.id));
+  return '<table class="resizable-table" data-resize-key="assets"><thead><tr>' +
+      '<th style="width:34px"><input type="checkbox" '+(allSelected?'checked':'')+' onchange="toggleAllAssetSelect('+JSON.stringify(list.map(a=>a.id))+', this.checked)"></th>' +
+      '<th>Asset ID</th><th>Name</th><th>User principal</th><th>Serial no</th><th>Status</th><th>Location</th><th></th></tr></thead><tbody>' +
     list.map(a => (
-      '<tr><td class="tid">'+a.id+'</td>' +
+      '<tr><td><input type="checkbox" '+(state.selectedAssetIds.includes(a.id)?'checked':'')+' onchange="toggleAssetSelect(\''+a.id+'\')"></td>' +
+      '<td class="tid">'+a.id+'</td>' +
       '<td class="muted">'+esc(a.assignedTo||'Unassigned')+'</td>' +
       '<td class="faint" style="font-size:12px">'+esc(a.userPrincipalName||'—')+'</td>' +
       '<td class="mono faint" style="font-size:11.5px">'+esc(a.serialNumber||'—')+'</td>' +
@@ -2074,6 +2117,33 @@ function assetStatusBadge(status){
 }
 
 /* ---------- Employees without assets ---------- */
+/* Assign one of the currently-unassigned assets straight to an employee
+   who has none — no need to open the asset and retype their details. */
+function openMoveAssetsModal(){
+  if (!state.selectedAssetIds.length) return;
+  const assignedNames = new Set(assets.map(a => (a.assignedTo||'').trim().toLowerCase()).filter(Boolean));
+  const withoutAssets = users.filter(u => u.status === 'active' && !assignedNames.has(u.name.trim().toLowerCase()));
+  openModal({
+    kind:'move-assets', title:'Move ' + state.selectedAssetIds.length + ' asset' + (state.selectedAssetIds.length>1?'s':'') + ' to an employee',
+    message: withoutAssets.length ? 'Choose from employees who currently have no assets.' : 'Every active employee already has at least one asset — pick anyone below anyway if that\'s still what you want.',
+    confirmLabel:'Move', employeeOptions: withoutAssets.length ? withoutAssets : users.filter(u=>u.status==='active'),
+  });
+}
+async function doMoveAssetsToEmployee(employeeId){
+  const emp = users.find(u => u.id === employeeId);
+  if (!emp) return;
+  const ids = state.selectedAssetIds.slice();
+  for (const id of ids){
+    await sb.from('assets').update({
+      assigned_to: emp.name, user_principal_name: emp.email, department: emp.dept,
+      status: 'In Use', asset_allot_date: new Date().toISOString().slice(0,10),
+    }).eq('id', id);
+    await logAuditRemote('Assigned asset', id, 'Reassigned', emp.name);
+  }
+  state.selectedAssetIds = [];
+  await loadAllData();
+}
+
 function noAssetEmployeesHtml(){
   const assignedNames = new Set(assets.map(a => (a.assignedTo||'').trim().toLowerCase()).filter(Boolean));
   const employees = users.filter(u => u.status === 'active');
