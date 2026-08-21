@@ -1756,7 +1756,7 @@ function usersHtml(){
           (iAmSuper && u.role === 'Admin' ? '<button class="btn btn-sm" onclick="transferSuperAdmin(\''+u.id+'\')">Make Super Admin</button>' : '<span class="faint">—</span>')) +
         '</td>' +
         '<td>'+esc(u.dept)+'</td><td class="faint">'+fmtRelative(u.lastActive)+'</td>' +
-        '<td style="text-align:right;white-space:nowrap"><button class="btn btn-sm" style="margin-right:6px" onclick="editUserOpen(\''+u.id+'\')">Edit</button><button class="btn btn-sm" style="margin-right:6px" onclick="adminSetPasswordDirect(\''+u.id+'\')">Set password</button><button class="btn btn-sm" style="margin-right:6px" onclick="adminResendReset(\''+u.id+'\')">Send reset email</button><button class="btn btn-sm btn-danger" onclick="disableUser(\''+u.id+'\')" '+(u.isSuperAdmin?'disabled title="Transfer Super Admin to someone else first"':'')+'>Disable</button></td></tr>'
+        '<td style="text-align:right;white-space:nowrap"><button class="btn btn-sm" style="margin-right:6px" onclick="editUserOpen(\''+u.id+'\')">Edit</button><button class="btn btn-sm" style="margin-right:6px" onclick="adminSetPasswordDirect(\''+u.id+'\')">Set password</button><button class="btn btn-sm btn-danger" onclick="disableUser(\''+u.id+'\')" '+(u.isSuperAdmin?'disabled title="Transfer Super Admin to someone else first"':'')+'>Disable</button></td></tr>'
       )).join('') + '</tbody></table></div>' : '<div class="card empty">'+(q ? 'No active users match "'+esc(state.activeUsersQ)+'".' : 'No active users.')+'</div>';
   }
 
