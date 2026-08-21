@@ -128,6 +128,14 @@ button{ cursor:pointer; }
 .page-desc{ font-size:12.8px; color:var(--ink-soft); margin:0; }
 
 .card{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:18px 20px; overflow-x:auto; }
+
+.resizable-table{ table-layout:fixed; }
+.resizable-table th{ position:relative; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.col-resize-handle{
+  position:absolute; right:-3px; top:0; width:7px; height:100%; cursor:col-resize;
+  user-select:none; z-index:5; touch-action:none;
+}
+.col-resize-handle:hover, .col-resize-handle.active{ background:var(--accent-soft); }
 .card table{ min-width:640px; }
 .grid{ display:grid; gap:14px; }
 .grid-4{ grid-template-columns:repeat(4,minmax(0,1fr)); }
@@ -343,7 +351,14 @@ tr.row-click:hover td{ background:var(--surface-alt); }
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 
 <script>
-const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+/* Session storage: by default Supabase keeps you signed in even after
+   closing the tab entirely (it uses localStorage, which survives browser
+   restarts). Using sessionStorage instead means a page refresh still
+   keeps you logged in, but actually closing the tab/window logs you out —
+   reopening the site requires signing in again. */
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  auth: { storage: window.sessionStorage, persistSession: true, autoRefreshToken: true },
+});
 
 /* ================= DATA ================= */
 
@@ -1298,6 +1313,54 @@ function render(){
       }
     }
   }
+
+  setupResizableTables();
+}
+
+/* Column widths persist for the session (resets on reload — these are a
+   display convenience, not data). Every render rebuilds table HTML from
+   scratch, so this re-attaches drag handles and re-applies any widths
+   you've already set each time. */
+const columnWidths = {};
+function setupResizableTables(){
+  document.querySelectorAll('table.resizable-table').forEach(table => {
+    const key = table.dataset.resizeKey;
+    if (!key) return;
+    const ths = table.querySelectorAll('thead th');
+    const saved = columnWidths[key];
+
+    ths.forEach((th, i) => {
+      if (saved && saved[i]) th.style.width = saved[i] + 'px';
+      else th.style.width = th.getBoundingClientRect().width + 'px';
+
+      if (i === ths.length - 1) return; // no handle on the last column
+      const handle = document.createElement('div');
+      handle.className = 'col-resize-handle';
+      th.appendChild(handle);
+
+      handle.addEventListener('mousedown', function(e){
+        e.preventDefault();
+        e.stopPropagation();
+        const startX = e.clientX;
+        const startWidth = th.getBoundingClientRect().width;
+        handle.classList.add('active');
+
+        function onMove(ev){
+          const newWidth = Math.max(50, startWidth + (ev.clientX - startX));
+          th.style.width = newWidth + 'px';
+        }
+        function onUp(){
+          document.removeEventListener('mousemove', onMove);
+          document.removeEventListener('mouseup', onUp);
+          handle.classList.remove('active');
+          if (!columnWidths[key]) columnWidths[key] = {};
+          columnWidths[key][i] = th.getBoundingClientRect().width;
+        }
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
+      });
+    });
+  });
 }
 
 function authShellHtml(){
@@ -1492,7 +1555,8 @@ function myTicketsHtml(){
 }
 
 function ticketTableHtml(list, showAssignee, showRequester){
-  return '<table><thead><tr><th>Ticket</th><th>Subject</th>' + (showRequester?'<th>Requested by</th>':'') + '<th>Priority</th><th>Status</th>' + (showAssignee?'<th>Assigned to</th>':'') + '<th>Created</th><th>Updated</th></tr></thead><tbody>' +
+  const key = 'tickets-' + (showRequester?'r':'') + (showAssignee?'a':'');
+  return '<table class="resizable-table" data-resize-key="'+key+'"><thead><tr><th>Ticket</th><th>Subject</th>' + (showRequester?'<th>Requested by</th>':'') + '<th>Priority</th><th>Status</th>' + (showAssignee?'<th>Assigned to</th>':'') + '<th>Created</th><th>Updated</th></tr></thead><tbody>' +
     list.map(t => (
       '<tr class="row-click" onclick="openTicket(\''+t.id+'\');state.view=\'ticket-detail\';render();">' +
       '<td class="tid">'+t.id+'</td>' +
@@ -1795,7 +1859,7 @@ function usersHtml(){
 
   if (state.userTab === 'pending'){
     const pending = users.filter(u=>u.status==='pending');
-    html += pending.length ? '<div class="card" style="padding:0"><table><thead><tr><th>Name</th><th>Email</th><th>Department</th><th>Requested</th><th></th></tr></thead><tbody>' +
+    html += pending.length ? '<div class="card" style="padding:0"><table class="resizable-table" data-resize-key="pending-users"><thead><tr><th>Name</th><th>Email</th><th>Department</th><th>Requested</th><th></th></tr></thead><tbody>' +
       pending.map(u => (
         '<tr><td>'+esc(u.name)+'</td><td class="mono" style="font-size:12px">'+esc(u.email)+'</td><td>'+esc(u.dept)+'</td><td class="faint">'+fmtRelative(u.requestedAt)+'</td>' +
         '<td style="text-align:right;white-space:nowrap"><button class="btn btn-sm" style="margin-right:6px" onclick="editUserOpen(\''+u.id+'\')">Edit</button><button class="btn btn-sm" style="margin-right:6px" onclick="rejectUser(\''+u.id+'\')">Reject</button><button class="btn btn-primary btn-sm" onclick="approveUser(\''+u.id+'\')">Approve</button></td></tr>'
@@ -1811,7 +1875,7 @@ function usersHtml(){
     html += '<div class="filters" style="margin-bottom:10px">' +
       '<input type="text" id="active-users-search" placeholder="Search by name, email, department or role…" value="'+esc(state.activeUsersQ||'')+'" oninput="setActiveUsersSearch(this.value)">' +
     '</div>';
-    html += active.length ? '<div class="card" style="padding:0"><table><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Location</th><th>Super Admin</th><th>Department</th><th>Last active</th><th></th></tr></thead><tbody>' +
+    html += active.length ? '<div class="card" style="padding:0"><table class="resizable-table" data-resize-key="active-users"><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Location</th><th>Super Admin</th><th>Department</th><th>Last active</th><th></th></tr></thead><tbody>' +
       active.map(u => (
         '<tr><td>'+esc(u.name)+'</td><td class="mono" style="font-size:12px">'+esc(u.email)+'</td>' +
         '<td><select class="inline-select" onchange="changeUserRole(\''+u.id+'\', this.value)">' +
@@ -1833,7 +1897,7 @@ function usersHtml(){
 
   if (state.userTab === 'disabled'){
     const disabled = users.filter(u=>u.status==='disabled');
-    html += disabled.length ? '<div class="card" style="padding:0"><table><thead><tr><th>Name</th><th>Email</th><th>Department</th><th></th></tr></thead><tbody>' +
+    html += disabled.length ? '<div class="card" style="padding:0"><table class="resizable-table" data-resize-key="disabled-users"><thead><tr><th>Name</th><th>Email</th><th>Department</th><th></th></tr></thead><tbody>' +
       disabled.map(u => (
         '<tr><td>'+esc(u.name)+'</td><td class="mono" style="font-size:12px">'+esc(u.email)+'</td><td>'+esc(u.dept)+'</td>' +
         '<td style="text-align:right;white-space:nowrap"><button class="btn btn-sm" style="margin-right:6px" onclick="editUserOpen(\''+u.id+'\')">Edit</button><button class="btn btn-primary btn-sm" onclick="enableUser(\''+u.id+'\')">Enable</button></td></tr>'
@@ -1987,7 +2051,7 @@ function assetsHtml(){
 }
 
 function assetTableHtml(list){
-  return '<table><thead><tr><th>Asset ID</th><th>Name</th><th>User principal</th><th>Model</th><th>Serial no</th><th>Status</th><th>Location</th><th></th></tr></thead><tbody>' +
+  return '<table class="resizable-table" data-resize-key="assets"><thead><tr><th>Asset ID</th><th>Name</th><th>User principal</th><th>Model</th><th>Serial no</th><th>Status</th><th>Location</th><th></th></tr></thead><tbody>' +
     list.map(a => (
       '<tr><td class="tid">'+a.id+'</td>' +
       '<td class="muted">'+esc(a.assignedTo||'Unassigned')+'</td>' +
@@ -2019,7 +2083,7 @@ function noAssetEmployeesHtml(){
   let html = '<div class="hint" style="margin-bottom:14px">Active accounts whose name doesn\'t match the "Assigned to" field on any asset in the register. Useful for spotting new joiners who still need equipment.</div>';
 
   html += '<div class="card" style="padding:0">' + (withoutAssets.length ?
-    '<table><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Department</th><th></th></tr></thead><tbody>' +
+    '<table class="resizable-table" data-resize-key="no-asset-employees"><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Department</th><th></th></tr></thead><tbody>' +
     withoutAssets.map(u => (
       '<tr><td>'+esc(u.name)+'</td><td class="mono" style="font-size:12px">'+esc(u.email)+'</td>' +
       '<td>'+esc(u.isSuperAdmin ? 'Super Admin' : u.role)+'</td><td>'+esc(u.dept)+'</td>' +
