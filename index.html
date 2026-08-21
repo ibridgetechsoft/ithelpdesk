@@ -741,6 +741,8 @@ function confirmModal(){
   if (!m) return;
   if (m.kind === 'confirm-delete-asset'){
     doDeleteAsset(m.targetId);
+  } else if (m.kind === 'confirm-unassign-assets'){
+    doUnassignSelectedAssets();
   } else if (m.kind === 'set-password'){
     const val = document.getElementById('modal-input').value;
     if (!val || val.length < 6){
@@ -2068,6 +2070,7 @@ function assetsHtml(){
     html += '<div class="card" style="margin-bottom:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">' +
       '<span>'+selectedCount+' asset'+(selectedCount>1?'s':'')+' selected</span>' +
       '<button class="btn btn-sm btn-primary" onclick="openMoveAssetsModal()">Move to employee</button>' +
+      '<button class="btn btn-sm" onclick="confirmUnassignSelectedAssets()">Unassign (mark as no asset)</button>' +
       '<button class="btn btn-sm" onclick="state.selectedAssetIds=[];render();">Clear selection</button>' +
     '</div>';
   }
@@ -2139,6 +2142,29 @@ async function doMoveAssetsToEmployee(employeeId){
       status: 'In Use', asset_allot_date: new Date().toISOString().slice(0,10),
     }).eq('id', id);
     await logAuditRemote('Assigned asset', id, 'Reassigned', emp.name);
+  }
+  state.selectedAssetIds = [];
+  await loadAllData();
+}
+
+/* Clear the assignment on selected assets — whoever had them will then
+   show up on "Employees without asset" again, and the assets go back
+   to available (In Stock) instead of pointing at anyone. */
+function confirmUnassignSelectedAssets(){
+  if (!state.selectedAssetIds.length) return;
+  openModal({
+    kind:'confirm-unassign-assets', title:'Unassign ' + state.selectedAssetIds.length + ' asset' + (state.selectedAssetIds.length>1?'s':'') + '?',
+    message:'These assets will be cleared of their current owner and marked "In Stock." Whoever had them will reappear on the Employees without asset list.',
+    confirmLabel:'Unassign',
+  });
+}
+async function doUnassignSelectedAssets(){
+  const ids = state.selectedAssetIds.slice();
+  for (const id of ids){
+    await sb.from('assets').update({
+      assigned_to: '', user_principal_name: '', status: 'In Stock', asset_allot_date: null,
+    }).eq('id', id);
+    await logAuditRemote('Unassigned asset', id, 'Assigned', 'Unassigned');
   }
   state.selectedAssetIds = [];
   await loadAllData();
