@@ -2120,11 +2120,19 @@ function assetStatusBadge(status){
 }
 
 /* ---------- Employees without assets ---------- */
+/* A row only counts as a "real" asset if it actually has a serial number —
+   this filters out placeholder rows (imported with just a name/email and
+   no real hardware details) from counting as someone "having an asset". */
+function namesWithRealAssets(){
+  return new Set(assets.filter(a => (a.serialNumber||'').trim())
+    .map(a => (a.assignedTo||'').trim().toLowerCase()).filter(Boolean));
+}
+
 /* Assign one of the currently-unassigned assets straight to an employee
    who has none — no need to open the asset and retype their details. */
 function openMoveAssetsModal(){
   if (!state.selectedAssetIds.length) return;
-  const assignedNames = new Set(assets.map(a => (a.assignedTo||'').trim().toLowerCase()).filter(Boolean));
+  const assignedNames = namesWithRealAssets();
   const withoutAssets = users.filter(u => u.status === 'active' && !assignedNames.has(u.name.trim().toLowerCase()));
   openModal({
     kind:'move-assets', title:'Move ' + state.selectedAssetIds.length + ' asset' + (state.selectedAssetIds.length>1?'s':'') + ' to an employee',
@@ -2171,7 +2179,7 @@ async function doUnassignSelectedAssets(){
 }
 
 function noAssetEmployeesHtml(){
-  const assignedNames = new Set(assets.map(a => (a.assignedTo||'').trim().toLowerCase()).filter(Boolean));
+  const assignedNames = namesWithRealAssets();
   const employees = users.filter(u => u.status === 'active');
   const withoutAssets = employees.filter(u => !assignedNames.has(u.name.trim().toLowerCase()));
 
