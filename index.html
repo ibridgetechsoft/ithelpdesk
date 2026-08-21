@@ -51,6 +51,7 @@ button{ cursor:pointer; }
 .sidebar{
   width:216px; flex-shrink:0; background:var(--ink); color:#EDEFF4;
   display:flex; flex-direction:column; padding:20px 14px;
+  position:sticky; top:0; height:100vh; overflow-y:auto; align-self:flex-start;
 }
 .brand{ display:flex; align-items:center; gap:9px; padding:2px 8px 22px; }
 .brand-mark{
@@ -224,7 +225,11 @@ tr.row-click:hover td{ background:var(--surface-alt); }
 .faint{ color:var(--ink-faint); }
 .mono{ font-family:var(--font-mono); }
 
-.filters{ display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap; align-items:center; }
+.filters{
+  display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap; align-items:center;
+  position:sticky; top:58px; z-index:15; background:var(--bg);
+  padding:10px 0; border-bottom:1px solid var(--border-soft);
+}
 .filters select, .filters input{ border:1px solid var(--border); border-radius:7px; padding:7px 10px; background:var(--surface); font-size:12.5px; }
 .filters input{ flex:1; min-width:160px; }
 .inline-select{ border:1px solid var(--border); border-radius:6px; padding:4px 7px; font-size:11.8px; background:var(--surface); }
@@ -1764,7 +1769,7 @@ function adminTicketsHtml(){
   list.sort((a,b)=>b.updatedAt-a.updatedAt);
 
   let html = '<div class="filters">' +
-    '<input type="text" placeholder="Search by subject, ID or requester…" value="'+esc(f.q)+'" oninput="setFilter(\'q\', this.value)">' +
+    '<input type="text" id="ticket-search" placeholder="Search by subject, ID or requester…" value="'+esc(f.q)+'" oninput="setFilter(\'q\', this.value)">' +
     '<select onchange="setFilter(\'status\', this.value)">' +
       '<option value="all" '+(f.status==='all'?'selected':'')+'>All statuses</option>' +
       STATUS_SEQ.map(s=>'<option value="'+s+'" '+(f.status===s?'selected':'')+'>'+STATUS_LABEL[s]+'</option>').join('') +
@@ -1804,7 +1809,7 @@ function usersHtml(){
     const iAmSuper = isCurrentUserSuperAdmin();
     html += '<div class="hint" style="margin-bottom:10px">Change the Role dropdown to grant Technician, Admin, or location-scoped Asset Manager access.' + (iAmSuper ? ' As Super Admin, you can also hand the ⭐ Super Admin designation to another Admin below.' : '') + '</div>';
     html += '<div class="filters" style="margin-bottom:10px">' +
-      '<input type="text" placeholder="Search by name, email, department or role…" value="'+esc(state.activeUsersQ||'')+'" oninput="setActiveUsersSearch(this.value)">' +
+      '<input type="text" id="active-users-search" placeholder="Search by name, email, department or role…" value="'+esc(state.activeUsersQ||'')+'" oninput="setActiveUsersSearch(this.value)">' +
     '</div>';
     html += active.length ? '<div class="card" style="padding:0"><table><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Location</th><th>Super Admin</th><th>Department</th><th>Last active</th><th></th></tr></thead><tbody>' +
       active.map(u => (
@@ -1881,7 +1886,7 @@ function assetFormHtml(){
     '<div class="section-title">' + (editing ? 'Edit asset — ' + editing.id : 'Add a new asset') + '</div>' +
     '<div id="asset-form-error" class="banner banner-warn" style="display:none"></div>' +
     '<div class="grid grid-2">' +
-      '<div class="field"><label>Name / model <span class="req">*</span></label><input type="text" id="asset-name" placeholder="e.g. Dell Latitude 5420" value="'+esc(v('name',''))+'"></div>' +
+      '<div class="field"><label>Model <span class="req">*</span></label><input type="text" id="asset-name" placeholder="e.g. Dell Latitude 5420" value="'+esc(v('name',''))+'"></div>' +
       '<div class="field"><label>Category <span class="req">*</span></label><select id="asset-category">' + ASSET_CATEGORIES.map(c=>'<option value="'+c+'" '+(v('category','')===c?'selected':'')+'>'+c+'</option>').join('') + '</select></div>' +
       '<div class="field"><label>Serial number</label><input type="text" id="asset-serial" placeholder="Serial / license key" value="'+esc(v('serialNumber',''))+'"></div>' +
       '<div class="field"><label>Status <span class="req">*</span></label><select id="asset-status">' + ASSET_STATUSES.map(s=>'<option value="'+s+'" '+(v('status','In Stock')===s?'selected':'')+'>'+s+'</option>').join('') + '</select></div>' +
@@ -1961,7 +1966,7 @@ function assetsHtml(){
 
   const locFilterOptions = isManager ? persona.assetLocations : LOCATIONS;
   html += '<div class="filters">' +
-    '<input type="text" placeholder="Search by name, ID, serial or assignee…" value="'+esc(f.q)+'" oninput="setAssetFilter(\'q\', this.value)">' +
+    '<input type="text" id="asset-search" placeholder="Search by name, ID, serial or assignee…" value="'+esc(f.q)+'" oninput="setAssetFilter(\'q\', this.value)">' +
     '<select onchange="setAssetFilter(\'category\', this.value)">' +
       '<option value="all" '+(f.category==='all'?'selected':'')+'>All categories</option>' +
       ASSET_CATEGORIES.map(c=>'<option value="'+c+'" '+(f.category===c?'selected':'')+'>'+c+'</option>').join('') +
@@ -1982,13 +1987,13 @@ function assetsHtml(){
 }
 
 function assetTableHtml(list){
-  return '<table><thead><tr><th>Asset ID</th><th>Name</th><th>Category</th><th>Serial</th><th>Assigned to</th><th>Status</th><th>Location</th><th></th></tr></thead><tbody>' +
+  return '<table><thead><tr><th>Asset ID</th><th>Name</th><th>User principal</th><th>Model</th><th>Serial no</th><th>Status</th><th>Location</th><th></th></tr></thead><tbody>' +
     list.map(a => (
       '<tr><td class="tid">'+a.id+'</td>' +
-      '<td>'+esc(a.name)+'</td>' +
-      '<td class="muted">'+esc(a.category)+'</td>' +
-      '<td class="mono faint" style="font-size:11.5px">'+esc(a.serialNumber||'—')+'</td>' +
       '<td class="muted">'+esc(a.assignedTo||'Unassigned')+'</td>' +
+      '<td class="faint" style="font-size:12px">'+esc(a.userPrincipalName||'—')+'</td>' +
+      '<td>'+esc(a.name)+'</td>' +
+      '<td class="mono faint" style="font-size:11.5px">'+esc(a.serialNumber||'—')+'</td>' +
       '<td><span class="badge '+assetStatusBadge(a.status)+'">'+a.status+'</span></td>' +
       '<td class="faint" style="font-size:12px">'+esc(a.location||'—')+'</td>' +
       '<td style="text-align:right;white-space:nowrap"><button class="btn btn-sm" style="margin-right:6px" onclick="openAssetForm(\''+a.id+'\')">Edit</button><button class="btn btn-sm btn-danger" onclick="deleteAsset(\''+a.id+'\')">Delete</button></td>' +
