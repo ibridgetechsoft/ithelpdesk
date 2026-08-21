@@ -762,15 +762,6 @@ function confirmModal(){
     if (dup){ showErr('Another account already uses that email.'); return; }
     doEditUser(m.targetId, name, email, dept);
     return;
-  } else if (m.kind === 'assign-asset'){
-    const assetId = document.getElementById('modal-asset-select').value;
-    if (!assetId){
-      const err = document.getElementById('modal-error');
-      if (err){ err.style.display = 'block'; err.innerText = 'Choose an asset first.'; }
-      return;
-    }
-    doAssignExistingAsset(m.targetId, assetId);
-    return;
   } else if (m.kind === 'info'){
     closeModal();
     return;
@@ -793,13 +784,6 @@ function modalHtml(){
     body = '<div class="field"><label>Name</label><input type="text" id="modal-name" value="'+esc(m.presetName||'')+'"></div>' +
       '<div class="field"><label>Email</label><input type="text" id="modal-email" value="'+esc(m.presetEmail||'')+'"></div>' +
       '<div class="field" style="margin-bottom:4px"><label>Department</label><input type="text" id="modal-dept" value="'+esc(m.presetDept||'')+'"></div>' +
-      '<div id="modal-error" class="hint" style="display:none;color:var(--critical);margin-bottom:8px"></div>';
-  }
-  if (m.kind === 'assign-asset'){
-    body = '<div class="field" style="margin-bottom:4px"><label>Asset</label><select id="modal-asset-select">' +
-        '<option value="">Choose an unassigned asset…</option>' +
-        (m.assetOptions||[]).map(a => '<option value="'+a.id+'">'+esc(a.id)+' — '+esc(a.name)+(a.serialNumber?' ('+esc(a.serialNumber)+')':'')+'</option>').join('') +
-      '</select></div>' +
       '<div id="modal-error" class="hint" style="display:none;color:var(--critical);margin-bottom:8px"></div>';
   }
   const singleButton = m.kind === 'info';
@@ -2094,7 +2078,6 @@ function noAssetEmployeesHtml(){
   const assignedNames = new Set(assets.map(a => (a.assignedTo||'').trim().toLowerCase()).filter(Boolean));
   const employees = users.filter(u => u.status === 'active');
   const withoutAssets = employees.filter(u => !assignedNames.has(u.name.trim().toLowerCase()));
-  const available = assets.filter(a => !a.assignedTo || !a.assignedTo.trim());
 
   let html = '<div class="hint" style="margin-bottom:14px">Active accounts whose name doesn\'t match the "Assigned to" field on any asset in the register. Useful for spotting new joiners who still need equipment.</div>';
 
@@ -2103,39 +2086,11 @@ function noAssetEmployeesHtml(){
     withoutAssets.map(u => (
       '<tr><td>'+esc(u.name)+'</td><td class="mono" style="font-size:12px">'+esc(u.email)+'</td>' +
       '<td>'+esc(u.isSuperAdmin ? 'Super Admin' : u.role)+'</td><td>'+esc(u.dept)+'</td>' +
-      '<td style="text-align:right;white-space:nowrap">' +
-        '<button class="btn btn-sm" style="margin-right:6px" onclick="assignExistingAsset(\''+u.id+'\')" '+(available.length?'':'disabled title="No unassigned assets available"')+'>Assign existing asset</button>' +
-        '<button class="btn btn-sm btn-primary" onclick="switchView(\'assets\');state.assetFormOpen=true;render();">+ Add asset</button>' +
-      '</td></tr>'
+      '<td style="text-align:right"><button class="btn btn-sm btn-primary" onclick="switchView(\'assets\');state.assetFormOpen=true;render();">+ Add asset</button></td></tr>'
     )).join('') + '</tbody></table>'
     : '<div class="empty">Every active employee has at least one asset assigned.</div>') + '</div>';
 
   return html;
-}
-
-/* Assign one of the currently-unassigned assets straight to an employee
-   who has none — no need to open the asset and retype their details. */
-function assignExistingAsset(employeeId){
-  const emp = users.find(u => u.id === employeeId);
-  if (!emp) return;
-  const available = assets.filter(a => !a.assignedTo || !a.assignedTo.trim());
-  if (!available.length) return;
-  openModal({
-    kind:'assign-asset', targetId:employeeId, title:'Assign asset to ' + emp.name,
-    message:'Only currently-unassigned assets are shown below.',
-    confirmLabel:'Assign', assetOptions: available,
-  });
-}
-async function doAssignExistingAsset(employeeId, assetId){
-  const emp = users.find(u => u.id === employeeId);
-  const asset = assets.find(a => a.id === assetId);
-  if (!emp || !asset) return;
-  await sb.from('assets').update({
-    assigned_to: emp.name, user_principal_name: emp.email, department: emp.dept,
-    status: 'In Use', asset_allot_date: new Date().toISOString().slice(0,10),
-  }).eq('id', assetId);
-  await logAuditRemote('Assigned asset', asset.id, 'Unassigned', emp.name);
-  await loadAllData();
 }
 
 /* ---------- Reports ---------- */
