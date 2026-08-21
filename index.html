@@ -1226,8 +1226,27 @@ const VIEW_TITLE = {
 
 /* ================= RENDER ================= */
 function render(){
+  // Re-rendering rebuilds the whole page's HTML, which would normally kick
+  // any input you're typing in out of focus (you'd have to click back in
+  // after every keystroke). This remembers what was focused — and exactly
+  // where your cursor was — and restores it right after.
+  const active = document.activeElement;
+  const activeId = active && active.id;
+  const selStart = active && typeof active.selectionStart === 'number' ? active.selectionStart : null;
+  const selEnd = active && typeof active.selectionEnd === 'number' ? active.selectionEnd : null;
+
   const app = document.getElementById('app');
   app.innerHTML = state.authenticated ? shellHtml() : authShellHtml();
+
+  if (activeId){
+    const el = document.getElementById(activeId);
+    if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')){
+      el.focus();
+      if (selStart !== null && typeof el.setSelectionRange === 'function'){
+        try { el.setSelectionRange(selStart, selEnd); } catch(e){}
+      }
+    }
+  }
 }
 
 function authShellHtml(){
@@ -1421,12 +1440,13 @@ function myTicketsHtml(){
   return '<div class="card" style="padding:0">' + ticketTableHtml(mine, false) + '</div>';
 }
 
-function ticketTableHtml(list, showAssignee){
-  return '<table><thead><tr><th>Ticket</th><th>Subject</th><th>Priority</th><th>Status</th>' + (showAssignee?'<th>Assigned to</th>':'') + '<th>Created</th><th>Updated</th></tr></thead><tbody>' +
+function ticketTableHtml(list, showAssignee, showRequester){
+  return '<table><thead><tr><th>Ticket</th><th>Subject</th>' + (showRequester?'<th>Requested by</th>':'') + '<th>Priority</th><th>Status</th>' + (showAssignee?'<th>Assigned to</th>':'') + '<th>Created</th><th>Updated</th></tr></thead><tbody>' +
     list.map(t => (
       '<tr class="row-click" onclick="openTicket(\''+t.id+'\');state.view=\'ticket-detail\';render();">' +
       '<td class="tid">'+t.id+'</td>' +
       '<td>'+esc(t.subject)+'</td>' +
+      (showRequester? '<td class="muted">'+(t.createdBy?esc(t.createdBy.name):'—')+'</td>':'') +
       '<td><span class="badge '+PRI_BADGE[t.priority]+'">'+t.priority+'</span></td>' +
       '<td><span class="badge '+STATUS_BADGE[t.status]+'">'+STATUS_LABEL[t.status]+'</span></td>' +
       (showAssignee? '<td class="muted">'+(t.assignedTo?esc(t.assignedTo.name):'—')+'</td>':'') +
@@ -1615,9 +1635,9 @@ function techAssignedHtml(){
     statCard('Resolved', mine.filter(t=>t.status==='RESOLVED').length, 'st-res') +
   '</div>';
   if (!open.length) html += '<div class="card empty" style="margin-bottom:14px">No active tickets assigned to you right now.</div>';
-  else html += '<div class="card" style="padding:0;margin-bottom:14px">' + ticketTableHtml(open, false) + '</div>';
+  else html += '<div class="card" style="padding:0;margin-bottom:14px">' + ticketTableHtml(open, false, true) + '</div>';
   if (closed.length){
-    html += '<div class="section-title" style="margin:18px 0 10px">Closed</div><div class="card" style="padding:0">' + ticketTableHtml(closed, false) + '</div>';
+    html += '<div class="section-title" style="margin:18px 0 10px">Closed</div><div class="card" style="padding:0">' + ticketTableHtml(closed, false, true) + '</div>';
   }
   return html;
 }
@@ -1713,7 +1733,7 @@ function adminTicketsHtml(){
     '</select>' +
   '</div>';
 
-  html += '<div class="card" style="padding:0">' + (list.length ? ticketTableHtml(list, true) : '<div class="empty">No tickets match these filters.</div>') + '</div>';
+  html += '<div class="card" style="padding:0">' + (list.length ? ticketTableHtml(list, true, true) : '<div class="empty">No tickets match these filters.</div>') + '</div>';
   return html;
 }
 
